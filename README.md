@@ -1,0 +1,2 @@
+# KasirJs
+belajar sistem JS
