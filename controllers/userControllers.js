@@ -4,10 +4,11 @@ const User = require("../models/User");
 const response = require("../responses");
 require("dotenv").config();
 
-
 const SECRET_KEY = process.env.SECRET_KEY;
 
-// REGISTER
+// ============================================================
+// REGISTER USER
+// ============================================================
 exports.register = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -17,84 +18,101 @@ exports.register = async (req, res) => {
       return response(400, null, "Semua field harus diisi", res);
     }
 
-    // Enkripsi password
-    const hashed = bcrypt.hashSync(password, 10);
+    // Cek apakah email sudah digunakan
+    const existingUser = await findUserByEmail(email);
+    if (existingUser) {
+      return response(400, null, "Email sudah terdaftar", res);
+    }
 
-    // Simpan ke database
-    User.create({ name, email, password: hashed, role }, (err) => {
-      if (err) {
-        console.error("Database error:", err);
-        return response(500, null, "Gagal register", res);
-      }
+    // Hash password (pakai async)
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-      return response(200, null, "Register berhasil", res);
-    });
+    // Simpan user baru
+    await createUser({ name, email, password: hashedPassword, role });
+
+    return response(201, null, "Registrasi berhasil", res);
   } catch (error) {
-    console.error("Error di blok try:", error);
-    return response(500, null, "Terjadi kesalahan internal server", res);
+    console.error("Error REGISTER:", error);
+    return response(500, null, "Terjadi kesalahan pada server", res);
   }
 };
 
-
-// LOGIN
+// ============================================================
+// LOGIN USER
+// ============================================================
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // validasi input
+    // Validasi input
     if (!email || !password) {
       return response(400, null, "Email dan password harus diisi", res);
     }
 
-    // cari user berdasarkan email
-    User.findByEmail(email, (err, results) => {
-      if (err) {
-        console.error("Database error:", err);
-        return response(500, null, "Terjadi kesalahan pada server", res);
-      }
+    // Cari user berdasarkan email
+    const user = await findUserByEmail(email);
+    if (!user) {
+      return response(404, null, "User tidak ditemukan", res);
+    }
 
-      if (results.length === 0) {
-        return response(404, null, "User tidak ditemukan", res);
-      }
+    // Cek password
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return response(401, null, "Password salah", res);
+    }
 
-      const user = results[0];
-
-      // validasi password
-      const valid = bcrypt.compareSync(password, user.password);
-      if (!valid) {
-        return response(401, null, "Password salah", res);
-      }
-
-      // token JWT
-      const token = jwt.sign(
+    // Buat token JWT
+    const token = jwt.sign(
       { id: user.id, role: user.role },
       SECRET_KEY,
       { expiresIn: "1h" }
     );
 
+    const data = {
+      token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+      },
+    };
 
-      const data = {
-        token,
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-        },
-      };
-
-      return response(200, data, "Login berhasil", res);
-    });
+    return response(200, data, "Login berhasil", res);
   } catch (error) {
-    console.error("Error di blok try:", error);
-    return response(500, null, "Terjadi kesalahan internal server", res);
+    console.error("Error LOGIN:", error);
+    return response(500, null, "Terjadi kesalahan pada server", res);
   }
 };
 
-
-
-// LOGOUT
+// ============================================================
+// LOGOUT USER
+// ============================================================
 exports.logout = (req, res) => {
-  // logout cukup hapus token di sisi client
+  // Logout hanya perlu hapus token di sisi client
   return response(200, null, "Logout berhasil (hapus token di sisi client)", res);
 };
+
+// ============================================================
+// HELPER FUNCTIONS
+// ============================================================
+
+// Dapatkan user berdasarkan email (Promise)
+function findUserByEmail(email) {
+  return new Promise((resolve, reject) => {
+    User.findByEmail(email, (err, results) => {
+      if (err) return reject(err);
+      resolve(results?.[0] || null);
+    });
+  });
+}
+
+// Buat user baru (Promise)
+function createUser(data) {
+  return new Promise((resolve, reject) => {
+    User.create(data, (err, result) => {
+      if (err) return reject(err);
+      resolve(result);
+    });
+  });
+}

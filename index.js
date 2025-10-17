@@ -17,9 +17,9 @@ app.use("/api/user", userRoutes);
 // ✅ Semua route di bawah ini wajib token
 app.use(auth);
 
-app.use("/api/produk", productsRoutes);
+app.use("/api/produk", auth ,productsRoutes);
 app.use("/api/admin", adminRoutes);
-app.use("/api/kasir", kasirRoutes);
+app.use("/api/kasir", auth ,kasirRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
